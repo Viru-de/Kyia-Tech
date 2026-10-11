@@ -1,0 +1,6 @@
+{
+  "name": "Klyia Technology - Client & Business Management System",
+  "description": "Production business management platform for Klyia Technology: CRM, clients, quotations, invoices, payments, renewals, recurring expenses, digital assets, and financial reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
