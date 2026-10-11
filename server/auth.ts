@@ -1,9 +1,12 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
 import { Request, Response, NextFunction } from 'express';
 import { UserRole } from '../src/types';
 import { db } from './db';
+
+dotenv.config({ override: true });
 
 export interface UserSession {
   userId: string;
@@ -112,7 +115,14 @@ export function comparePassword(password: string, hash: string): boolean {
   }
 }
 
+export const SESSION_SECRET =
+  process.env.SESSION_SECRET || 'KlyiaCRM-8vQ2mN7xR4pL9kT6wY3hF5sB1dJ0cZ8aG2uE6rX9';
+
 export function hashToken(token: string): string {
+  return crypto.createHmac('sha256', SESSION_SECRET).update(token).digest('hex');
+}
+
+export function hashTokenLegacy(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
@@ -162,7 +172,12 @@ export async function getSession(rawToken: string): Promise<UserSession | null> 
   if (!rawToken || rawToken.length < 16) return null;
   const tokenHash = hashToken(rawToken);
 
-  const sessionRow = await db.getSessionByTokenHash(tokenHash);
+  let sessionRow = await db.getSessionByTokenHash(tokenHash);
+  if (!sessionRow) {
+    // Check legacy hash for seamless secret rotation transition
+    const legacyHash = hashTokenLegacy(rawToken);
+    sessionRow = await db.getSessionByTokenHash(legacyHash);
+  }
   if (!sessionRow) return null;
 
   return {
@@ -180,6 +195,7 @@ export async function revokeSession(rawToken: string): Promise<void> {
   if (!rawToken) return;
   const tokenHash = hashToken(rawToken);
   await db.deleteSessionByTokenHash(tokenHash);
+  await db.deleteSessionByTokenHash(hashTokenLegacy(rawToken));
 }
 
 export async function revokeAllUserSessions(userId: string): Promise<void> {

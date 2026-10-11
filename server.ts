@@ -6,15 +6,16 @@ import { db } from './server/db';
 import { apiRouter } from './server/routes';
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ override: true });
 
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || '3000', 10);
   const isProduction = process.env.NODE_ENV === 'production';
+  const sessionSecret = process.env.SESSION_SECRET || 'KlyiaCRM-8vQ2mN7xR4pL9kT6wY3hF5sB1dJ0cZ8aG2uE6rX9';
 
   // Cookie and body parsing middleware
-  app.use(cookieParser());
+  app.use(cookieParser(sessionSecret));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 

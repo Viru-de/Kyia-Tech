@@ -352,6 +352,15 @@
   "assets": [],
   "logs": [
     {
+      "id": "log-1791717211804",
+      "timestamp": "2026-10-11T11:13:31.804Z",
+      "action": "User Logged In",
+      "details": "Successful login for klyiatechnology@gmail.com (Admin)",
+      "userName": "Klyia Administrator",
+      "userRole": "Admin",
+      "entityType": "Settings"
+    },
+    {
       "id": "log-1791714935866",
       "timestamp": "2026-10-11T10:35:35.866Z",
       "action": "User Logged In",
@@ -528,6 +537,14 @@
       "ip_address": "127.0.0.1",
       "user_agent": "curl/7.88.1",
       "expires_at": "2026-10-12T10:35:35.865Z"
+    },
+    {
+      "id": "sess-1791717211803-78e48254",
+      "user_id": "usr-admin-klyia",
+      "token_hash": "8558eed275555adebed9d6b35d51ae044f6f3b4f1861b53c8b2e76644432fec4",
+      "ip_address": "127.0.0.1",
+      "user_agent": "curl/7.88.1",
+      "expires_at": "2026-11-10T11:13:31.803Z"
     }
   ],
   "passwordResets": [
