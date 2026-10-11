@@ -70,22 +70,20 @@ export const SettingsView: React.FC = () => {
   const handleResetSample = () => {
     if (
       window.confirm(
-        'Reset database to initial Klyia Technology sample data? Current unsaved edits will be refreshed.'
+        'Permanently reset all business data? All client, project, quotation, invoice, and payment records will be purged so you can start fresh.'
       )
     ) {
       resetToSampleData();
       setFormData(companySettings);
-      alert('Sample data restored.');
     }
   };
 
   const handleClearAll = () => {
     const confirmation = prompt(
-      'DANGER: To delete all transactional data, type "CLEAR" in capital letters:'
+      'DANGER: To permanently delete all clients, invoices, quotations, payments, and transactional records, type "CLEAR" in capital letters:'
     );
     if (confirmation === 'CLEAR') {
       clearAllData();
-      alert('All transactional records cleared.');
     }
   };
 
@@ -778,7 +776,7 @@ export const SettingsView: React.FC = () => {
                   Database Reset Operations
                 </h4>
                 <p className="text-xs text-rose-700 mt-0.5">
-                  Restore original realistic Klyia Technology sample data or clear all transactions.
+                  Permanently purge all existing clients, quotations, invoices, payments, and financial records to start fresh.
                 </p>
               </div>
             </div>
@@ -789,7 +787,7 @@ export const SettingsView: React.FC = () => {
                 className="px-4 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5 text-cyan-600" />
-                <span>Reset to Original Sample Data</span>
+                <span>Reset to Clean Fresh CRM</span>
               </button>
 
               <button
@@ -797,7 +795,7 @@ export const SettingsView: React.FC = () => {
                 className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Clear All Transaction Records</span>
+                <span>Permanently Delete All Business Data</span>
               </button>
             </div>
           </div>

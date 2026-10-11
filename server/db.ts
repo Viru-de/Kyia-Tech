@@ -2307,14 +2307,13 @@ class DatabaseManager {
     return true;
   }
 
-  public async resetSample(): Promise<void> {
-    const initial = loadInitialStore();
-
+  public async purgeAllBusinessData(): Promise<void> {
     if (this.isMySQLActive && this.pool) {
       const conn = await this.pool.getConnection();
       try {
         await conn.beginTransaction();
         await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+        // Delete in foreign-key-safe order
         await conn.query('TRUNCATE TABLE payments');
         await conn.query('TRUNCATE TABLE invoices');
         await conn.query('TRUNCATE TABLE quotations');
@@ -2323,25 +2322,17 @@ class DatabaseManager {
         await conn.query('TRUNCATE TABLE expenses');
         await conn.query('TRUNCATE TABLE digital_assets');
         await conn.query('TRUNCATE TABLE clients');
+        await conn.query('TRUNCATE TABLE activity_logs');
         await conn.query('SET FOREIGN_KEY_CHECKS = 1');
         await conn.commit();
+        console.log('[Database] Successfully purged all transactional business data from MySQL.');
       } catch (e) {
         await conn.rollback();
-        console.error('MySQL truncate error on reset:', e);
+        console.error('MySQL truncate error on purge:', e);
         throw e;
       } finally {
         conn.release();
       }
-
-      await this.updateSettings(initial.settings);
-      for (const client of initial.clients) await this.createClient(client);
-      for (const pur of initial.purchases) await this.createPurchase(pur);
-      for (const qtn of initial.quotations) await this.createQuotation(qtn);
-      for (const inv of initial.invoices) await this.createInvoice(inv);
-      for (const pay of initial.payments) await this.createPayment(pay);
-      for (const ren of initial.renewals) await this.createRenewal(ren);
-      for (const exp of initial.expenses) await this.createExpense(exp);
-      for (const asset of initial.assets) await this.createDigitalAsset(asset);
       return;
     }
 
@@ -2349,8 +2340,22 @@ class DatabaseManager {
       throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
     }
 
-    this.store = initial;
+    // Server-side persistent storage purge
+    this.store.clients = [];
+    this.store.purchases = [];
+    this.store.payments = [];
+    this.store.renewals = [];
+    this.store.quotations = [];
+    this.store.invoices = [];
+    this.store.expenses = [];
+    this.store.assets = [];
+    this.store.logs = [];
     this.persistStore();
+    console.log('[Database] Purged all business data from local persistent store.');
+  }
+
+  public async resetSample(): Promise<void> {
+    await this.purgeAllBusinessData();
   }
 
   // -------------------------------------------------------------

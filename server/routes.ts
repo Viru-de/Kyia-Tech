@@ -402,8 +402,22 @@ apiRouter.post(
   requireRoles(['Admin']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      await db.resetSample();
-      res.json({ success: true, message: 'Database reset to Klyia Technology sample data' });
+      await db.purgeAllBusinessData();
+      res.json({ success: true, message: 'All business data has been permanently cleared and reset to fresh state' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+apiRouter.post(
+  '/database/purge-all',
+  authenticateUser,
+  requireRoles(['Admin']),
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      await db.purgeAllBusinessData();
+      res.json({ success: true, message: 'All transactional business records permanently purged' });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

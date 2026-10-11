@@ -257,31 +257,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           pan: settingsRes.settings.pan || 'AVSPP4822G',
         });
       }
-      if (clientsRes?.clients && clientsRes.clients.length > 0) {
+      if (clientsRes?.clients) {
         setClients(clientsRes.clients);
       }
-      if (purchasesRes?.purchases && purchasesRes.purchases.length > 0) {
+      if (purchasesRes?.purchases) {
         setPurchases(purchasesRes.purchases);
       }
-      if (quotationsRes?.quotations && quotationsRes.quotations.length > 0) {
+      if (quotationsRes?.quotations) {
         setQuotations(quotationsRes.quotations);
       }
-      if (invoicesRes?.invoices && invoicesRes.invoices.length > 0) {
+      if (invoicesRes?.invoices) {
         setInvoices(invoicesRes.invoices);
       }
-      if (paymentsRes?.payments && paymentsRes.payments.length > 0) {
+      if (paymentsRes?.payments) {
         setPayments(paymentsRes.payments);
       }
-      if (renewalsRes?.renewals && renewalsRes.renewals.length > 0) {
+      if (renewalsRes?.renewals) {
         setRenewals(renewalsRes.renewals);
       }
-      if (expensesRes?.expenses && expensesRes.expenses.length > 0) {
+      if (expensesRes?.expenses) {
         setExpenses(expensesRes.expenses);
       }
-      if (assetsRes?.assets && assetsRes.assets.length > 0) {
+      if (assetsRes?.assets) {
         setDigitalAssets(assetsRes.assets);
       }
-      if (logsRes?.logs && logsRes.logs.length > 0) {
+      if (logsRes?.logs) {
         setActivityLogs(logsRes.logs);
       }
     } catch (err) {
@@ -1363,27 +1363,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const resetToSampleData = () => {
     api.resetSampleData()
       .then(() => {
-        showToast('Database reset to Klyia Technology sample records.', 'success');
+        showToast('All business data has been permanently cleared and reset to fresh state.', 'success');
         loadAllDataFromDatabase();
       })
       .catch((err) => {
-        console.error('Failed to reset sample data:', err);
+        console.error('Failed to reset data:', err);
         showToast('Error resetting database.', 'error');
       });
   };
 
-  const clearAllData = () => {
-    setClients([]);
-    setPurchases([]);
-    setPayments([]);
-    setRenewals([]);
-    setQuotations([]);
-    setInvoices([]);
-    setExpenses([]);
-    setDigitalAssets([]);
-    setActivityLogs([]);
-    setReadNotifications([]);
-    logActivity('Database Cleared', 'Emptied all active transactional records', 'Settings');
+  const clearAllData = async () => {
+    try {
+      await api.purgeDatabase();
+      setClients([]);
+      setPurchases([]);
+      setPayments([]);
+      setRenewals([]);
+      setQuotations([]);
+      setInvoices([]);
+      setExpenses([]);
+      setDigitalAssets([]);
+      setActivityLogs([]);
+      setReadNotifications([]);
+      await loadAllDataFromDatabase();
+      showToast('All transactional records and business data permanently cleared from database.', 'success');
+    } catch (err) {
+      console.error('Failed to purge database:', err);
+      showToast('Error clearing database records.', 'error');
+    }
   };
 
   return (

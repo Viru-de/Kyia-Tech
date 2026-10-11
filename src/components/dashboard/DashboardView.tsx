@@ -311,7 +311,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
               {formatINR(metrics.pendingPaymentsTotal)}
             </p>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Rejoy ₹1.41L • Fruit ERP ₹42K
+              Outstanding receivables
             </p>
           </div>
 

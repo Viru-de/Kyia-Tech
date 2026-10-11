@@ -188,6 +188,10 @@ export const api = {
     request<{ success: boolean; message: string }>('/database/reset-sample', {
       method: 'POST',
     }),
+  purgeDatabase: () =>
+    request<{ success: boolean; message: string }>('/database/purge-all', {
+      method: 'POST',
+    }),
 
   // Clients
   getClients: (includeArchived = false) =>
