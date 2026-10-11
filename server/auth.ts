@@ -6,7 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import { UserRole } from '../src/types';
 import { db } from './db';
 
-dotenv.config({ override: true });
+dotenv.config();
 
 export interface UserSession {
   userId: string;

@@ -5,8 +5,8 @@ import cookieParser from 'cookie-parser';
 import { db } from './server/db';
 import { apiRouter } from './server/routes';
 
-// Load environment variables
-dotenv.config({ override: true });
+// Load environment variables without overriding platform-level env vars
+dotenv.config();
 
 async function startServer() {
   const app = express();
