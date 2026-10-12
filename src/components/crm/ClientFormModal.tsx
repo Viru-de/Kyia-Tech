@@ -40,12 +40,20 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
     notes: '',
     mapUrl: '',
     assignedTo: 'Viru Patel',
+    totalBillAmount: 0,
+    advanceReceived: 0,
+    pendingAmount: 0,
+    dueDate: '',
+    paymentStatus: 'Pending',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (clientToEdit) {
+      const bill = Number(clientToEdit.totalBillAmount || 0);
+      const adv = Number(clientToEdit.advanceReceived || 0);
+      const pend = clientToEdit.pendingAmount !== undefined ? Number(clientToEdit.pendingAmount) : Math.max(0, bill - adv);
       setFormData({
         name: clientToEdit.name || '',
         companyName: clientToEdit.companyName || '',
@@ -70,6 +78,11 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
         notes: clientToEdit.notes || '',
         mapUrl: clientToEdit.mapUrl || '',
         assignedTo: clientToEdit.assignedTo || 'Viru Patel',
+        totalBillAmount: bill,
+        advanceReceived: adv,
+        pendingAmount: pend,
+        dueDate: clientToEdit.dueDate || '',
+        paymentStatus: clientToEdit.paymentStatus || (pend === 0 && bill > 0 ? 'Paid' : adv > 0 ? 'Partially Paid' : 'Pending'),
       });
     } else {
       setFormData({
@@ -96,6 +109,11 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
         notes: '',
         mapUrl: '',
         assignedTo: 'Viru Patel',
+        totalBillAmount: 0,
+        advanceReceived: 0,
+        pendingAmount: 0,
+        dueDate: '',
+        paymentStatus: 'Pending',
       });
     }
     setErrors({});
@@ -120,6 +138,32 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
 
     setErrors(err);
     return Object.keys(err).length === 0;
+  };
+
+  const handleBillChange = (val: string) => {
+    const bill = Math.max(0, parseFloat(val) || 0);
+    const adv = Number(formData.advanceReceived) || 0;
+    const pend = Math.max(0, bill - adv);
+    const status = pend === 0 && bill > 0 ? 'Paid' : adv > 0 && pend > 0 ? 'Partially Paid' : 'Pending';
+    setFormData((prev) => ({
+      ...prev,
+      totalBillAmount: bill,
+      pendingAmount: pend,
+      paymentStatus: status,
+    }));
+  };
+
+  const handleAdvanceChange = (val: string) => {
+    const adv = Math.max(0, parseFloat(val) || 0);
+    const bill = Number(formData.totalBillAmount) || 0;
+    const pend = Math.max(0, bill - adv);
+    const status = pend === 0 && bill > 0 ? 'Paid' : adv > 0 && pend > 0 ? 'Partially Paid' : 'Pending';
+    setFormData((prev) => ({
+      ...prev,
+      advanceReceived: adv,
+      pendingAmount: pend,
+      paymentStatus: status,
+    }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -358,6 +402,106 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
                 <option value="Renewed">Renewed</option>
                 <option value="Lost">Lost</option>
               </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Billing & Outstanding Receivables */}
+        <div className="pt-2 border-t border-slate-200">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Billing & Financial Snapshot
+            </h4>
+            <span className="text-[11px] text-slate-500 font-medium">
+              Synchronized with Dashboard Financials & Outstanding Receivables
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80 mb-3 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Total Bill Amount (₹)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={formData.totalBillAmount || ''}
+                    onChange={(e) => handleBillChange(e.target.value)}
+                    placeholder="0"
+                    className="w-full pl-7 pr-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Total contract / project billing</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Advance Received (₹)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={formData.advanceReceived || ''}
+                    onChange={(e) => handleAdvanceChange(e.target.value)}
+                    placeholder="0"
+                    className="w-full pl-7 pr-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Advance payment received to date</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Pending Amount (₹)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                  <input
+                    type="text"
+                    readOnly
+                    value={(formData.pendingAmount || 0).toLocaleString('en-IN')}
+                    className="w-full pl-7 pr-3 py-2 text-xs font-extrabold rounded-xl border border-rose-200 bg-rose-50 text-rose-700 cursor-not-allowed"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Auto-computed (Bill − Advance)</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Payment Due Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.dueDate || ''}
+                  onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Payment Status
+                </label>
+                <select
+                  value={formData.paymentStatus || 'Pending'}
+                  onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value })}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Partially Paid">Partially Paid</option>
+                  <option value="Paid">Paid</option>
+                  <option value="Overdue">Overdue</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>

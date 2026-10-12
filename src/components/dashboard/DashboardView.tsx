@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Users,
   CheckCircle2,
@@ -27,6 +27,10 @@ import {
 import { useApp } from '../../context/AppContext';
 import { formatINR, formatDate, getDaysDiff, generateWhatsAppReminder, openWhatsAppChat } from '../../utils/formatters';
 import { Badge } from '../common/Badge';
+import { SnapshotDetailModal, SnapshotMetricType } from './SnapshotDetailModal';
+import { ClientDetailModal } from '../crm/ClientDetailModal';
+import { ClientFormModal } from '../crm/ClientFormModal';
+import { Client } from '../../types';
 
 interface DashboardViewProps {
   onOpenQuickAction: (actionType: string) => void;
@@ -46,6 +50,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
     renewNow,
     markReminderSent,
   } = useApp();
+
+  // Snapshot Detail Modal state
+  const [activeSnapshotMetric, setActiveSnapshotMetric] = useState<SnapshotMetricType | null>(null);
+  const [selectedClientForDetail, setSelectedClientForDetail] = useState<Client | null>(null);
+  const [selectedClientForEdit, setSelectedClientForEdit] = useState<Client | null>(null);
+
+  const handleOpenSnapshot = (metric: SnapshotMetricType) => {
+    setActiveSnapshotMetric(metric);
+  };
+
+  const handleCloseSnapshot = () => {
+    setActiveSnapshotMetric(null);
+  };
+
+  const handleViewClient = (client: Client) => {
+    setSelectedClientForDetail(client);
+  };
+
+  const handleEditClient = (client: Client) => {
+    setSelectedClientForEdit(client);
+  };
 
   // Filter urgent renewals
   const urgentRenewals = renewals
@@ -153,12 +178,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
 
           {/* Quick Stat Pill */}
           <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10 shrink-0">
-            <div>
+            <div
+              onClick={() => handleOpenSnapshot('this-month-revenue')}
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+              title="Click to view this month revenue breakdown"
+            >
               <p className="text-[11px] font-medium text-slate-300">This Month Revenue</p>
               <p className="text-lg font-black text-cyan-300">{formatINR(metrics.thisMonthRevenue)}</p>
             </div>
             <div className="w-px h-8 bg-white/10" />
-            <div>
+            <div
+              onClick={() => handleOpenSnapshot('net-profit')}
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+              title="Click to view net profit analysis"
+            >
               <p className="text-[11px] font-medium text-slate-300">Net Business Profit</p>
               <p
                 className={`text-lg font-black ${
@@ -220,14 +253,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
               <span>Add Expense</span>
             </button>
             <button
-              onClick={() => setCurrentTab('renewals')}
+              onClick={() => handleOpenSnapshot('renewal-due')}
               className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-amber-300 transition-all cursor-pointer group shadow-sm"
             >
               <Clock className="w-4 h-4 mb-1 text-amber-300 group-hover:scale-110 transition-transform" />
               <span>View Renewals</span>
             </button>
             <button
-              onClick={() => setCurrentTab('sales-invoices')}
+              onClick={() => handleOpenSnapshot('pending-payments')}
               className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-rose-300 transition-all cursor-pointer group shadow-sm"
             >
               <AlertCircle className="w-4 h-4 mb-1 text-rose-300 group-hover:scale-110 transition-transform" />
@@ -243,15 +276,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
             Financial & Operations Snapshot
           </h3>
-          <span className="text-xs text-slate-500">Real-time calculations</span>
+          <span className="text-xs text-slate-500 font-medium">Click any card to inspect detailed records</span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
-          {/* Total Clients */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 1. Total Clients */}
+          <div
+            onClick={() => handleOpenSnapshot('total-clients')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-cyan-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view all registered clients"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Total Clients</span>
-              <Users className="w-4 h-4 text-slate-400" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-cyan-700 transition-colors">Total Clients</span>
+              <div className="flex items-center gap-1">
+                <Users className="w-4 h-4 text-slate-400 group-hover:text-cyan-500 transition-colors" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-slate-900 mt-2">{metrics.totalClients}</p>
             <p className="text-[11px] text-slate-400 mt-0.5">
@@ -259,21 +299,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
             </p>
           </div>
 
-          {/* Active Clients */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 2. Active Clients */}
+          <div
+            onClick={() => handleOpenSnapshot('active-clients')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view active clients & ongoing projects"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Active Clients</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-emerald-700 transition-colors">Active Clients</span>
+              <div className="flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-emerald-600 mt-2">{metrics.activeClients}</p>
             <p className="text-[11px] text-slate-400 mt-0.5">Ongoing projects/services</p>
           </div>
 
-          {/* New Clients */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 3. New Clients */}
+          <div
+            onClick={() => handleOpenSnapshot('new-clients')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-cyan-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view newly onboarded clients"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">New Clients</span>
-              <Sparkles className="w-4 h-4 text-cyan-500" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-cyan-700 transition-colors">New Clients</span>
+              <div className="flex items-center gap-1">
+                <Sparkles className="w-4 h-4 text-cyan-500" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-cyan-600 mt-2">{metrics.newClients}</p>
             <p className="text-[11px] text-slate-400 mt-0.5">
@@ -281,31 +335,52 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
             </p>
           </div>
 
-          {/* Renewal Due */}
-          <div className="bg-white p-4 rounded-xl border border-amber-200/80 bg-amber-50/20 shadow-xs hover:border-amber-300 transition-all">
+          {/* 4. Renewal Due */}
+          <div
+            onClick={() => handleOpenSnapshot('renewal-due')}
+            className="bg-white p-4 rounded-xl border border-amber-200/80 bg-amber-50/20 shadow-xs hover:border-amber-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view renewals due within the next 30 days"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-amber-900">Renewal Due</span>
-              <RefreshCw className="w-4 h-4 text-amber-600" />
+              <span className="text-xs font-medium text-amber-900 group-hover:text-amber-950 transition-colors">Renewal Due</span>
+              <div className="flex items-center gap-1">
+                <RefreshCw className="w-4 h-4 text-amber-600" />
+                <ChevronRight className="w-3 h-3 text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-amber-700 mt-2">{metrics.renewalDueCount}</p>
             <p className="text-[11px] text-amber-800/80 mt-0.5">Due in next 30 days</p>
           </div>
 
-          {/* Renewal Overdue */}
-          <div className="bg-white p-4 rounded-xl border border-rose-200/80 bg-rose-50/20 shadow-xs hover:border-rose-300 transition-all">
+          {/* 5. Renewal Overdue */}
+          <div
+            onClick={() => handleOpenSnapshot('renewal-overdue')}
+            className="bg-white p-4 rounded-xl border border-rose-200/80 bg-rose-50/20 shadow-xs hover:border-rose-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view overdue renewals requiring action"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-rose-900">Renewal Overdue</span>
-              <AlertTriangle className="w-4 h-4 text-rose-600" />
+              <span className="text-xs font-medium text-rose-900 group-hover:text-rose-950 transition-colors">Renewal Overdue</span>
+              <div className="flex items-center gap-1">
+                <AlertTriangle className="w-4 h-4 text-rose-600" />
+                <ChevronRight className="w-3 h-3 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-rose-700 mt-2">{metrics.renewalOverdueCount}</p>
             <p className="text-[11px] text-rose-800/80 mt-0.5">Requires immediate renewal</p>
           </div>
 
-          {/* Pending Payments */}
-          <div className="bg-white p-4 rounded-xl border border-rose-200/80 shadow-xs hover:border-rose-300 transition-all">
+          {/* 6. Pending Payments */}
+          <div
+            onClick={() => handleOpenSnapshot('pending-payments')}
+            className="bg-white p-4 rounded-xl border border-rose-200/80 shadow-xs hover:border-rose-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view complete outstanding receivables list"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Pending Payments</span>
-              <CreditCard className="w-4 h-4 text-rose-500" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-rose-700 transition-colors">Pending Payments</span>
+              <div className="flex items-center gap-1">
+                <CreditCard className="w-4 h-4 text-rose-500" />
+                <ChevronRight className="w-3 h-3 text-rose-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-rose-600 mt-2">
               {formatINR(metrics.pendingPaymentsTotal)}
@@ -315,11 +390,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
             </p>
           </div>
 
-          {/* Advance Balance */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 7. Advance Balance */}
+          <div
+            onClick={() => handleOpenSnapshot('advance-balance')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-indigo-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view advance balance & client deposits"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Advance Balance</span>
-              <Wallet className="w-4 h-4 text-indigo-500" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-indigo-700 transition-colors">Advance Balance</span>
+              <div className="flex items-center gap-1">
+                <Wallet className="w-4 h-4 text-indigo-500" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-indigo-600 mt-2">
               {formatINR(metrics.advanceBalanceTotal)}
@@ -327,11 +409,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
             <p className="text-[11px] text-slate-400 mt-0.5">Total advances received</p>
           </div>
 
-          {/* Total Revenue */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 8. Total Revenue */}
+          <div
+            onClick={() => handleOpenSnapshot('total-revenue')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view lifetime receipts and payment records"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Total Revenue</span>
-              <TrendingUp className="w-4 h-4 text-emerald-500" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-emerald-700 transition-colors">Total Revenue</span>
+              <div className="flex items-center gap-1">
+                <TrendingUp className="w-4 h-4 text-emerald-500" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-slate-900 mt-2">
               {formatINR(metrics.totalRevenue)}
@@ -339,11 +428,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
             <p className="text-[11px] text-emerald-600 font-semibold mt-0.5">Lifetime receipts</p>
           </div>
 
-          {/* This Month Revenue */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 9. This Month Revenue */}
+          <div
+            onClick={() => handleOpenSnapshot('this-month-revenue')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-cyan-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view receipts collected this calendar month"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">This Month Rev.</span>
-              <DollarSign className="w-4 h-4 text-cyan-600" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-cyan-700 transition-colors">This Month Rev.</span>
+              <div className="flex items-center gap-1">
+                <DollarSign className="w-4 h-4 text-cyan-600" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-cyan-700 mt-2">
               {formatINR(metrics.thisMonthRevenue)}
@@ -351,11 +447,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
             <p className="text-[11px] text-slate-400 mt-0.5">Received current month</p>
           </div>
 
-          {/* This Month Expenses */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 10. Month Expenses */}
+          <div
+            onClick={() => handleOpenSnapshot('this-month-expenses')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-rose-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view expenses and bills recorded this month"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Month Expenses</span>
-              <TrendingDown className="w-4 h-4 text-rose-500" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-rose-700 transition-colors">Month Expenses</span>
+              <div className="flex items-center gap-1">
+                <TrendingDown className="w-4 h-4 text-rose-500" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-rose-600 mt-2">
               {formatINR(metrics.thisMonthExpenses)}
@@ -363,11 +466,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
             <p className="text-[11px] text-slate-400 mt-0.5">Bills & operational cost</p>
           </div>
 
-          {/* Net Profit */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 11. Net Profit */}
+          <div
+            onClick={() => handleOpenSnapshot('net-profit')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view cash profit and revenue-vs-expense breakdown"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Net Profit</span>
-              <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-emerald-700 transition-colors">Net Profit</span>
+              <div className="flex items-center gap-1">
+                <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p
               className={`text-xl font-extrabold mt-2 ${
@@ -376,14 +486,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
             >
               {formatINR(metrics.netProfit)}
             </p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Revenue - Expenses</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Revenue − Expenses</p>
           </div>
 
-          {/* Active Projects */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 12. Active Projects */}
+          <div
+            onClick={() => handleOpenSnapshot('active-projects')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view ongoing projects and services"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Active Projects</span>
-              <Briefcase className="w-4 h-4 text-sky-500" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-sky-700 transition-colors">Active Projects</span>
+              <div className="flex items-center gap-1">
+                <Briefcase className="w-4 h-4 text-sky-500" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-slate-900 mt-2">
               {metrics.activeProjectsCount}
@@ -391,11 +508,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
             <p className="text-[11px] text-slate-400 mt-0.5">In dev or deployment</p>
           </div>
 
-          {/* Pending Quotations */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 13. Pending Quotes */}
+          <div
+            onClick={() => handleOpenSnapshot('pending-quotes')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-purple-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view pending quotations awaiting client decision"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Pending Quotes</span>
-              <FileSpreadsheet className="w-4 h-4 text-purple-500" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-purple-700 transition-colors">Pending Quotes</span>
+              <div className="flex items-center gap-1">
+                <FileSpreadsheet className="w-4 h-4 text-purple-500" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-purple-600 mt-2">
               {metrics.pendingQuotationsCount}
@@ -403,11 +527,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
             <p className="text-[11px] text-slate-400 mt-0.5">Awaiting client decision</p>
           </div>
 
-          {/* Accepted Quotations */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
+          {/* 14. Accepted Quotes */}
+          <div
+            onClick={() => handleOpenSnapshot('accepted-quotes')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] select-none"
+            title="Click to view accepted quotations"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Accepted Quotes</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <span className="text-xs font-medium text-slate-500 group-hover:text-emerald-700 transition-colors">Accepted Quotes</span>
+              <div className="flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
             <p className="text-xl font-extrabold text-emerald-600 mt-2">
               {metrics.acceptedQuotationsCount}
@@ -685,6 +816,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenQuickAction 
           </div>
         </div>
       </div>
+
+      {/* Snapshot Detailed Inspection Modal */}
+      <SnapshotDetailModal
+        isOpen={Boolean(activeSnapshotMetric)}
+        onClose={handleCloseSnapshot}
+        metricType={activeSnapshotMetric}
+        onViewClient={handleViewClient}
+        onEditClient={handleEditClient}
+      />
+
+      {/* Client Detail Modal */}
+      <ClientDetailModal
+        isOpen={Boolean(selectedClientForDetail)}
+        onClose={() => setSelectedClientForDetail(null)}
+        clientId={selectedClientForDetail?.id || null}
+        onEdit={(c) => {
+          setSelectedClientForDetail(null);
+          setSelectedClientForEdit(c);
+        }}
+        onAddPurchase={() => onOpenQuickAction('purchase')}
+        onAddPayment={() => onOpenQuickAction('payment')}
+        onCreateQuotation={() => onOpenQuickAction('quotation')}
+        onAddRenewal={() => onOpenQuickAction('renewal')}
+      />
+
+      {/* Client Edit Modal */}
+      <ClientFormModal
+        isOpen={Boolean(selectedClientForEdit)}
+        onClose={() => setSelectedClientForEdit(null)}
+        clientToEdit={selectedClientForEdit}
+      />
     </div>
   );
 };

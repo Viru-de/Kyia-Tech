@@ -90,12 +90,18 @@ CREATE TABLE IF NOT EXISTS `clients` (
   `services` JSON,
   `project_title` VARCHAR(255) DEFAULT '',
   `estimated_value` DECIMAL(12,2) DEFAULT 0.00,
+  `total_bill_amount` DECIMAL(12,2) DEFAULT 0.00,
+  `advance_received` DECIMAL(12,2) DEFAULT 0.00,
+  `pending_amount` DECIMAL(12,2) DEFAULT 0.00,
+  `due_date` VARCHAR(50) DEFAULT NULL,
+  `payment_status` VARCHAR(50) DEFAULT 'Pending',
   `is_archived` TINYINT(1) DEFAULT 0,
   `archived_at` VARCHAR(50) DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_client_status` (`status`),
   INDEX `idx_client_pipeline` (`pipeline_stage`),
+  INDEX `idx_client_payment_status` (`payment_status`),
   INDEX `idx_client_archived` (`is_archived`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

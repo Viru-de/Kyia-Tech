@@ -162,6 +162,8 @@ interface AppContextType {
     totalPaid: number;
     totalAdvance: number;
     totalBalance: number;
+    dueDate?: string;
+    paymentStatus: string;
     isOverdue: boolean;
   };
 }
@@ -1095,22 +1097,69 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // FINANCIAL LEDGER HELPER
   // --------------------------------------------------------------------------
   const getClientFinancials = (clientId: string) => {
+    const client = clients.find((c) => c.id === clientId);
     const clientPurchases = purchases.filter((p) => p.clientId === clientId);
-    const totalBilled = clientPurchases.reduce((acc, p) => acc + p.grandTotal, 0);
     const clientPayments = payments.filter((p) => p.clientId === clientId);
-    const totalPaid = clientPayments.reduce((acc, p) => acc + p.amount, 0);
-    const totalAdvance = clientPurchases.reduce((acc, p) => acc + (p.advancePaid || 0), 0);
-    const totalBalance = Math.max(0, totalBilled - totalPaid);
-    const hasOverduePurchases = clientPurchases.some(
-      (p) => p.paymentStatus === 'Overdue' || (p.balanceDue > 0 && p.dueDate && getDaysDiff(p.dueDate) < 0)
+    const clientInvoices = invoices.filter((i) => i.clientId === clientId);
+
+    const purchasesBilled = clientPurchases.reduce((acc, p) => acc + p.grandTotal, 0);
+    const invoicesBilled = clientInvoices.reduce((acc, i) => acc + i.grandTotal, 0);
+    const paymentsPaid = clientPayments.reduce((acc, p) => acc + p.amount, 0);
+    const purchasesAdvance = clientPurchases.reduce((acc, p) => acc + (p.advancePaid || 0), 0);
+
+    const hasDirectBilling = Boolean(
+      client &&
+      ((client.totalBillAmount !== undefined && client.totalBillAmount > 0) ||
+        (client.advanceReceived !== undefined && client.advanceReceived > 0))
     );
+
+    const totalBilled = hasDirectBilling
+      ? Number(client?.totalBillAmount || 0)
+      : Math.max(purchasesBilled, invoicesBilled);
+
+    const totalAdvance = hasDirectBilling
+      ? Number(client?.advanceReceived || 0)
+      : Math.max(purchasesAdvance, paymentsPaid);
+
+    const totalPaid = Math.max(totalAdvance, paymentsPaid);
+
+    const totalBalance = hasDirectBilling
+      ? Math.max(0, totalBilled - totalAdvance)
+      : Math.max(0, totalBilled - totalPaid);
+
+    const dueDate =
+      client?.dueDate ||
+      clientPurchases.find((p) => p.dueDate)?.dueDate ||
+      clientInvoices.find((i) => i.dueDate)?.dueDate;
+
+    const hasOverdue = Boolean(
+      client?.paymentStatus === 'Overdue' ||
+        (totalBalance > 0 && dueDate && getDaysDiff(dueDate) < 0) ||
+        clientPurchases.some(
+          (p) =>
+            p.paymentStatus === 'Overdue' ||
+            (p.balanceDue > 0 && p.dueDate && getDaysDiff(p.dueDate) < 0)
+        )
+    );
+
+    const paymentStatus =
+      client?.paymentStatus ||
+      (totalBalance <= 0 && totalBilled > 0
+        ? 'Paid'
+        : totalAdvance > 0 && totalBalance > 0
+        ? 'Partially Paid'
+        : totalBalance > 0
+        ? 'Pending'
+        : 'Paid');
 
     return {
       totalBilled,
       totalPaid,
       totalAdvance,
       totalBalance,
-      isOverdue: hasOverduePurchases,
+      dueDate,
+      paymentStatus,
+      isOverdue: hasOverdue,
     };
   };
 
@@ -1231,10 +1280,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const returningClients = activeClientsList.filter((c) => c.clientType === 'RETURNING CLIENT').length;
     const oldClients = activeClientsList.filter((c) => c.clientType === 'OLD CLIENT').length;
 
-    const renewalDueCount = renewals.filter(
-      (r) => r.status === 'Due Soon' || r.status === 'Due Today'
-    ).length;
-    const renewalOverdueCount = renewals.filter((r) => r.status === 'Overdue').length;
+    const renewalDueCount = renewals.filter((r) => {
+      if (r.status === 'Renewed' || r.status === 'Cancelled') return false;
+      const d = getDaysDiff(r.renewalDate);
+      return d >= 0 && d <= 30;
+    }).length;
+
+    const renewalOverdueCount = renewals.filter((r) => {
+      if (r.status === 'Renewed' || r.status === 'Cancelled') return false;
+      const d = getDaysDiff(r.renewalDate);
+      return d < 0;
+    }).length;
 
     const totalRevenue = payments.reduce((acc, p) => acc + p.amount, 0);
 
@@ -1250,11 +1306,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const netProfit = totalRevenue - totalExpenses;
 
-    const pendingPurchasesBal = purchases.reduce((acc, p) => acc + (p.balanceDue || 0), 0);
-    const pendingInvoicesBal = invoices.reduce((acc, i) => acc + (i.balanceDue || 0), 0);
-    const pendingPaymentsTotal = Math.max(pendingPurchasesBal, pendingInvoicesBal);
+    const clientsWithPending = activeClientsList.filter((c) => {
+      const fin = getClientFinancials(c.id);
+      return fin.totalBalance > 0;
+    });
 
-    const advanceBalanceTotal = purchases.reduce((acc, p) => acc + (p.advancePaid || 0), 0);
+    const pendingPaymentsTotal = clientsWithPending.reduce((acc, c) => {
+      const fin = getClientFinancials(c.id);
+      return acc + fin.totalBalance;
+    }, 0);
+
+    const advanceBalanceTotal = activeClientsList.reduce((acc, c) => {
+      const fin = getClientFinancials(c.id);
+      return acc + fin.totalAdvance;
+    }, 0);
 
     const activeProjectsCount = clients.filter(
       (c) =>

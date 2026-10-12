@@ -58,6 +58,7 @@ apiRouter.post('/auth/login', async (req: Request, res: Response) => {
     // Query user in MySQL
     const user = await db.getUserByIdentifier(loginUser);
     if (!user) {
+      console.warn(`[Auth Diagnostic] Login failed: User account not found for identifier: ${maskEmail(loginUser)}`);
       recordLoginFailure(loginUser);
       return res.status(401).json({
         success: false,
@@ -66,6 +67,7 @@ apiRouter.post('/auth/login', async (req: Request, res: Response) => {
     }
 
     if (user.status === 'Inactive' || user.status === 'Suspended') {
+      console.warn(`[Auth Diagnostic] Login blocked: Account status is '${user.status}' for user: ${maskEmail(user.email)} (ID: ${user.id})`);
       return res.status(403).json({
         success: false,
         error: 'Your account is currently inactive or suspended. Please contact the administrator.',
@@ -75,6 +77,7 @@ apiRouter.post('/auth/login', async (req: Request, res: Response) => {
     // Verify bcrypt hash
     const passwordValid = comparePassword(password, user.password_hash);
     if (!passwordValid) {
+      console.warn(`[Auth Diagnostic] Login failed: Password comparison failed for user: ${maskEmail(user.email)} (ID: ${user.id})`);
       recordLoginFailure(loginUser);
       return res.status(401).json({
         success: false,
@@ -126,8 +129,8 @@ apiRouter.post('/auth/login', async (req: Request, res: Response) => {
       message: 'Logged in successfully',
     });
   } catch (err: any) {
-    console.error('[Auth Route] Login error:', err);
-    res.status(500).json({ success: false, error: err.message || 'Internal server error during login' });
+    console.error(`[Auth Diagnostic] Database connection or query failed during login: ${err?.message || err}`);
+    res.status(500).json({ success: false, error: 'Database service unavailable or query error during login.' });
   }
 });
 

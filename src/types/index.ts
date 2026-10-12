@@ -111,6 +111,11 @@ export interface Client {
   services?: ClientServiceItem[];
   projectTitle?: string;
   estimatedValue?: number;
+  totalBillAmount?: number;
+  advanceReceived?: number;
+  pendingAmount?: number;
+  dueDate?: string;
+  paymentStatus?: 'Paid' | 'Partially Paid' | 'Pending' | string;
   isArchived?: boolean;
   archivedAt?: string;
 }

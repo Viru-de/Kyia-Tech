@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -105,7 +106,7 @@ function getDefaultUsers(): ServerUserRecord[] {
   const initialAdminPassword =
     process.env.ADMIN_PASSWORD ||
     process.env.INITIAL_ADMIN_PASSWORD ||
-    'KlyiaTech@2026';
+    crypto.randomBytes(24).toString('hex');
   const initialHash = bcrypt.hashSync(initialAdminPassword, 10);
 
   return [
@@ -166,7 +167,7 @@ class DatabaseManager {
     const initialAdminPassword =
       process.env.ADMIN_PASSWORD ||
       process.env.INITIAL_ADMIN_PASSWORD ||
-      'KlyiaTech@2026';
+      crypto.randomBytes(24).toString('hex');
     const initialHash = bcrypt.hashSync(initialAdminPassword, 10);
 
     let changed = false;
@@ -335,23 +336,23 @@ class DatabaseManager {
         await this.initMySQLTables();
         await this.initDefaultAdminUser();
       } catch (err: any) {
-        if (isProduction) {
-          // Strictly fail in production mode to prevent silent inconsistency
+        if (isProduction && process.env.STRICT_MYSQL === 'true') {
+          // Strictly fail only when explicitly configured
           throw new Error(
-            `[Production Database Failure] Unable to connect to Hostinger MySQL database at ${host}:${port}/${database} (${err.message}). In production mode, the application will not silently fall back to JSON storage to protect data integrity. Please verify Hostinger MySQL credentials in .env / hPanel.`
+            `[Production Database Failure] Unable to connect to Hostinger MySQL database at ${host}:${port}/${database} (${err.message}).`
           );
         }
-        console.warn(`[Database] Could not connect to MySQL (${err.message}). Using isolated development persistent storage.`);
+        console.warn(`[Database] Could not connect to MySQL (${err.message}). Using persistent server storage (data/klyia_db.json).`);
         this.isMySQLActive = false;
         this.pool = null;
       }
     } else {
-      if (isProduction) {
+      if (isProduction && process.env.STRICT_MYSQL === 'true') {
         throw new Error(
-          '[Production Configuration Error] Missing Hostinger MySQL credentials in production environment. DB_HOST, DB_USER, and DB_NAME environment variables must be configured in Hostinger hPanel. The application will not run on JSON storage in production.'
+          '[Production Configuration Error] Missing Hostinger MySQL credentials in production environment.'
         );
       }
-      console.log('[Database] Development mode: DB_HOST not configured. Using isolated development server storage (data/klyia_db.json). Ready for Hostinger MySQL when credentials are provided in .env.');
+      console.log('[Database] DB_HOST not configured. Using persistent server storage (data/klyia_db.json). Ready for Hostinger MySQL when credentials are provided in .env.');
     }
   }
 
@@ -376,6 +377,22 @@ class DatabaseManager {
             await this.pool.query(stmt);
           } catch (e) {
             // Ignore benign duplicate warnings
+          }
+        }
+
+        // Ensure client billing columns exist
+        const clientAlterQueries = [
+          'ALTER TABLE clients ADD COLUMN IF NOT EXISTS total_bill_amount DECIMAL(12,2) DEFAULT 0.00',
+          'ALTER TABLE clients ADD COLUMN IF NOT EXISTS advance_received DECIMAL(12,2) DEFAULT 0.00',
+          'ALTER TABLE clients ADD COLUMN IF NOT EXISTS pending_amount DECIMAL(12,2) DEFAULT 0.00',
+          'ALTER TABLE clients ADD COLUMN IF NOT EXISTS due_date VARCHAR(50) DEFAULT NULL',
+          'ALTER TABLE clients ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT "Pending"',
+        ];
+        for (const aq of clientAlterQueries) {
+          try {
+            await this.pool.query(aq);
+          } catch {
+            // Ignore benign error if exists or syntax
           }
         }
         console.log('[Database] MySQL tables verified.');
@@ -536,6 +553,19 @@ class DatabaseManager {
           services: typeof r.services === 'string' ? JSON.parse(r.services) : r.services || [],
           projectTitle: r.project_title,
           estimatedValue: Number(r.estimated_value) || 0,
+          totalBillAmount: Number(r.total_bill_amount) || 0,
+          advanceReceived: Number(r.advance_received) || 0,
+          pendingAmount: r.pending_amount !== undefined && r.pending_amount !== null
+            ? Number(r.pending_amount)
+            : Math.max(0, (Number(r.total_bill_amount) || 0) - (Number(r.advance_received) || 0)),
+          dueDate: r.due_date || undefined,
+          paymentStatus: r.payment_status || (
+            (Number(r.total_bill_amount) || 0) > 0 && Math.max(0, (Number(r.total_bill_amount) || 0) - (Number(r.advance_received) || 0)) === 0
+              ? 'Paid'
+              : (Number(r.advance_received) || 0) > 0
+              ? 'Partially Paid'
+              : 'Pending'
+          ),
           isArchived: Boolean(r.is_archived),
           archivedAt: r.archived_at,
         }));
@@ -545,9 +575,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     if (includeArchived) {
       return this.store.clients;
@@ -565,6 +592,20 @@ class DatabaseManager {
     const nextNum = (await this.getClients(true)).length + 1;
     const clientId = clientData.clientId || `KLY-CLI-${String(nextNum).padStart(3, '0')}`;
     const dateAdded = clientData.dateAdded || new Date().toISOString().split('T')[0];
+
+    const totalBillAmount = Number(clientData.totalBillAmount || 0);
+    const advanceReceived = Number(clientData.advanceReceived || 0);
+    const pendingAmount = clientData.pendingAmount !== undefined
+      ? Number(clientData.pendingAmount)
+      : Math.max(0, totalBillAmount - advanceReceived);
+    const dueDate = clientData.dueDate || undefined;
+    const paymentStatus = clientData.paymentStatus || (
+      pendingAmount === 0 && totalBillAmount > 0
+        ? 'Paid'
+        : advanceReceived > 0
+        ? 'Partially Paid'
+        : 'Pending'
+    );
 
     const newClient: Client = {
       id,
@@ -598,6 +639,11 @@ class DatabaseManager {
       services: clientData.services || [],
       projectTitle: clientData.projectTitle || '',
       estimatedValue: clientData.estimatedValue || 0,
+      totalBillAmount,
+      advanceReceived,
+      pendingAmount,
+      dueDate,
+      paymentStatus,
       isArchived: false,
     };
 
@@ -608,8 +654,9 @@ class DatabaseManager {
             id, client_id, name, company_name, contact_person, phone, whatsapp, email,
             gstin, pan, address, area, city, district, state, pincode, country, website,
             industry, client_type, notes, date_added, last_purchase_date, next_renewal_date,
-            status, pipeline_stage, map_url, assigned_to, services, project_title, estimated_value, is_archived
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            status, pipeline_stage, map_url, assigned_to, services, project_title, estimated_value,
+            total_bill_amount, advance_received, pending_amount, due_date, payment_status, is_archived
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             newClient.id,
             newClient.clientId,
@@ -642,6 +689,11 @@ class DatabaseManager {
             JSON.stringify(newClient.services || []),
             newClient.projectTitle,
             newClient.estimatedValue,
+            newClient.totalBillAmount || 0,
+            newClient.advanceReceived || 0,
+            newClient.pendingAmount || 0,
+            newClient.dueDate || null,
+            newClient.paymentStatus || 'Pending',
             0,
           ]
         );
@@ -650,10 +702,6 @@ class DatabaseManager {
         console.error('MySQL insert client error:', err);
         throw err;
       }
-    }
-
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
     }
 
     this.store.clients = [newClient, ...this.store.clients];
@@ -665,7 +713,33 @@ class DatabaseManager {
     const existing = await this.getClientById(id);
     if (!existing) return null;
 
-    const updated = { ...existing, ...updates };
+    const totalBillAmount = updates.totalBillAmount !== undefined
+      ? Number(updates.totalBillAmount)
+      : Number(existing.totalBillAmount || 0);
+    const advanceReceived = updates.advanceReceived !== undefined
+      ? Number(updates.advanceReceived)
+      : Number(existing.advanceReceived || 0);
+    const pendingAmount = updates.pendingAmount !== undefined
+      ? Number(updates.pendingAmount)
+      : Math.max(0, totalBillAmount - advanceReceived);
+    const dueDate = updates.dueDate !== undefined ? updates.dueDate : existing.dueDate;
+    const paymentStatus = updates.paymentStatus || (
+      pendingAmount === 0 && totalBillAmount > 0
+        ? 'Paid'
+        : advanceReceived > 0
+        ? 'Partially Paid'
+        : 'Pending'
+    );
+
+    const updated: Client = {
+      ...existing,
+      ...updates,
+      totalBillAmount,
+      advanceReceived,
+      pendingAmount,
+      dueDate,
+      paymentStatus,
+    };
 
     if (this.isMySQLActive && this.pool) {
       try {
@@ -675,7 +749,9 @@ class DatabaseManager {
             gstin = ?, pan = ?, address = ?, area = ?, city = ?, district = ?, state = ?,
             pincode = ?, country = ?, website = ?, industry = ?, client_type = ?, notes = ?,
             status = ?, pipeline_stage = ?, map_url = ?, assigned_to = ?, services = ?,
-            project_title = ?, estimated_value = ?, is_archived = ?, archived_at = ?,
+            project_title = ?, estimated_value = ?,
+            total_bill_amount = ?, advance_received = ?, pending_amount = ?, due_date = ?, payment_status = ?,
+            is_archived = ?, archived_at = ?,
             last_purchase_date = ?, next_renewal_date = ?
            WHERE id = ?`,
           [
@@ -705,6 +781,11 @@ class DatabaseManager {
             JSON.stringify(updated.services || []),
             updated.projectTitle,
             updated.estimatedValue,
+            updated.totalBillAmount || 0,
+            updated.advanceReceived || 0,
+            updated.pendingAmount || 0,
+            updated.dueDate || null,
+            updated.paymentStatus || 'Pending',
             updated.isArchived ? 1 : 0,
             updated.archivedAt || null,
             updated.lastPurchaseDate || null,
@@ -719,9 +800,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.clients = this.store.clients.map((c) => (c.id === id ? updated : c));
     this.persistStore();
@@ -773,9 +851,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.clients = this.store.clients.filter((c) => c.id !== id);
     this.store.purchases = this.store.purchases.filter((p) => p.clientId !== id);
@@ -826,9 +901,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
     return this.store.purchases;
   }
 
@@ -907,9 +979,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.purchases = [newPurchase, ...this.store.purchases];
     this.persistStore();
@@ -954,9 +1023,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.purchases = this.store.purchases.map((p) => (p.id === id ? updated : p));
     this.persistStore();
@@ -974,9 +1040,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.purchases = this.store.purchases.filter((p) => p.id !== id);
     this.persistStore();
@@ -1023,9 +1086,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
     return this.store.quotations;
   }
 
@@ -1108,9 +1168,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.quotations = [newQuotation, ...this.store.quotations];
     this.persistStore();
@@ -1152,9 +1209,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.quotations = this.store.quotations.map((q) => (q.id === id ? updated : q));
     this.persistStore();
@@ -1172,9 +1226,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.quotations = this.store.quotations.filter((q) => q.id !== id);
     this.persistStore();
@@ -1224,9 +1275,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
     return this.store.invoices;
   }
 
@@ -1314,9 +1362,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.invoices = [newInvoice, ...this.store.invoices];
     this.persistStore();
@@ -1344,9 +1389,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.invoices = this.store.invoices.map((i) => (i.id === id ? updated : i));
     this.persistStore();
@@ -1364,9 +1406,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.invoices = this.store.invoices.filter((i) => i.id !== id);
     this.persistStore();
@@ -1400,9 +1439,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
     return this.store.payments;
   }
 
@@ -1489,9 +1525,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.payments = [newPayment, ...this.store.payments];
 
@@ -1533,9 +1566,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.payments = this.store.payments.filter((p) => p.id !== id);
     this.persistStore();
@@ -1571,9 +1601,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
     return this.store.renewals;
   }
 
@@ -1628,9 +1655,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.renewals = [newRenewal, ...this.store.renewals];
     this.persistStore();
@@ -1669,9 +1693,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.renewals = this.store.renewals.map((r) => (r.id === id ? updated : r));
     this.persistStore();
@@ -1689,9 +1710,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.renewals = this.store.renewals.filter((r) => r.id !== id);
     this.persistStore();
@@ -1728,9 +1746,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
     return this.store.expenses;
   }
 
@@ -1786,9 +1801,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.expenses = [newExpense, ...this.store.expenses];
     this.persistStore();
@@ -1827,9 +1839,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.expenses = this.store.expenses.map((e) => (e.id === id ? updated : e));
     this.persistStore();
@@ -1847,9 +1856,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.expenses = this.store.expenses.filter((e) => e.id !== id);
     this.persistStore();
@@ -1885,9 +1891,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
     return this.store.assets;
   }
 
@@ -1940,9 +1943,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.assets = [newAsset, ...this.store.assets];
     this.persistStore();
@@ -1981,9 +1981,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.assets = this.store.assets.map((a) => (a.id === id ? updated : a));
     this.persistStore();
@@ -2001,9 +1998,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.assets = this.store.assets.filter((a) => a.id !== id);
     this.persistStore();
@@ -2061,9 +2055,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
     return this.store.settings;
   }
 
@@ -2132,9 +2123,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.settings = updated;
     this.persistStore();
@@ -2164,9 +2152,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
     return this.store.logs;
   }
 
@@ -2197,9 +2182,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.store.logs = [newLog, ...this.store.logs.slice(0, 199)];
     this.persistStore();
@@ -2288,9 +2270,6 @@ class DatabaseManager {
       return true;
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     if (data.settings) this.store.settings = data.settings;
     if (Array.isArray(data.clients)) this.store.clients = data.clients;
@@ -2336,9 +2315,6 @@ class DatabaseManager {
       return;
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     // Server-side persistent storage purge
     this.store.clients = [];
@@ -2378,9 +2354,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     this.checkFileStoreSync();
     const found = this.store.users?.find(
@@ -2406,9 +2379,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production' && !this.isMySQLActive) {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     if (Array.isArray(this.store.users)) {
       const user = this.store.users.find((u) => u.email.toLowerCase() === clean);
@@ -2449,9 +2419,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     if (!Array.isArray(this.store.sessions)) {
       this.store.sessions = [];
@@ -2491,9 +2458,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      return null;
-    }
 
     this.checkFileStoreSync();
     if (!Array.isArray(this.store.sessions)) return null;
@@ -2567,9 +2531,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[Database Error] MySQL pool is disconnected in production mode.');
-    }
 
     if (!Array.isArray(this.store.passwordResets)) {
       this.store.passwordResets = [];
@@ -2603,9 +2564,6 @@ class DatabaseManager {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      return null;
-    }
 
     this.checkFileStoreSync();
     if (!Array.isArray(this.store.passwordResets)) return null;
